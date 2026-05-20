@@ -1,0 +1,6 @@
+Brand,Model,Type,Price,Status,Engine,Horsepower,Transmission,Color,FuelType
+Porsche,911 Carrera,Coupe,120000,available,3.0L Twin-Turbo Flat-6,379 HP,PDK,Shark Blue,Gasoline
+Tesla,Model S,Electric,89990,available,Dual Motor AC,670 HP,Automatic,Arctic White,Electric
+Audi,e-tron GT,Electric,104900,available,Electric,522 HP,Automatic,Black Metallic,Electric
+BMW,i4 M50,Coupe,67300,available,Dual Motor,536 HP,Automatic,Portimao Blue,Electric
+Ford,Mustang Mach-E,SUV,42995,available,Electric,266 HP,Automatic,Shadow Black,Electric

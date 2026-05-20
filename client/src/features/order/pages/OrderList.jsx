@@ -9,12 +9,14 @@ import {
   Pencil,
   Check,
   X,
+  Download,
 } from 'lucide-react';
 import { useToast } from '../../../components/Common/UI/ToastContext';
 import { Button, Input, StatusBadge } from '../../../components/Common/UI/Components';
 import { apiOrders } from '../../../lib/crudApi';
 import ConfirmDialog from '../../../components/Common/UI/ConfirmDialog';
 import { useOrderActions } from '../hooks/useOrderActions';
+import { exportToExcel } from '../../../shared/utils/excelHelper';
 
 const OrderList = () => {
   const { addToast } = useToast();
@@ -97,6 +99,34 @@ const OrderList = () => {
     }
   };
 
+  const handleExportClick = () => {
+    if (orders.length === 0) {
+      return addToast('Không có dữ liệu để xuất!', 'warning');
+    }
+
+    try {
+      addToast('Đang chuẩn bị file...', 'info');
+      
+      const exportData = orders.map(order => ({
+        'Mã đơn hàng': order.orderCode || order._id,
+        'Ngày tạo': new Date(order.createdAt).toLocaleDateString('vi-VN'),
+        'Hãng xe': order.carId?.modelId?.brand || 'N/A',
+        'Dòng xe': order.carId?.modelId?.name || 'N/A',
+        'Giá bán ($)': order.price || 0,
+        'Tên khách hàng': order.customerName || 'N/A',
+        'Số điện thoại': order.phoneNumber || 'N/A',
+        'Email': order.customerEmail || '',
+        'Ghi chú': order.note || '',
+        'Trạng thái': order.status === 'completed' ? 'Hoàn tất' : order.status === 'cancelled' ? 'Đã hủy' : 'Đang xử lý'
+      }));
+
+      exportToExcel(exportData, 'Danh_sach_don_hang.xlsx', 'Đơn hàng');
+      addToast('Xuất file Excel thành công!', 'success');
+    } catch (err) {
+      addToast('Lỗi khi xuất file Excel', 'error');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -104,6 +134,15 @@ const OrderList = () => {
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Quản lý Đơn hàng</h2>
           <p className="text-slate-500 text-sm font-medium">Theo dõi hoạt động bán hàng của showroom</p>
         </div>
+        <Button 
+          variant="ghost" 
+          size="md" 
+          icon={Download}
+          onClick={handleExportClick}
+          className="hover:bg-slate-100 border border-slate-200"
+        >
+          Xuất Excel
+        </Button>
       </div>
 
       {/* Filters Bar */}

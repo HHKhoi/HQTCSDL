@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { apiCars, apiCarSpecs } from '../../../lib/crudApi';
+import { apiCars, apiCarSpecs, apiCarTypes, apiCarModels } from '../../../lib/crudApi';
 import { 
   Plus, 
   Search, 
@@ -10,6 +10,8 @@ import {
   Activity,
   Pencil,
   ShoppingCart,
+  Download,
+  Upload,
 } from 'lucide-react';
 import Modal from '../../../components/Common/UI/Modal';
 import ConfirmDialog from '../../../components/Common/UI/ConfirmDialog';
@@ -20,6 +22,50 @@ import CustomSelect from '../../../components/Common/UI/CustomSelect';
 import { useToast } from '../../../components/Common/UI/ToastContext';
 import { Button, Input, StatusBadge } from '../../../components/Common/UI/Components';
 import { useOrderActions } from '../../order/hooks/useOrderActions';
+import { exportToExcel, readExcelOrCsv } from '../../../shared/utils/excelHelper';
+
+const KEY_TRANSLATIONS = {
+  'động cơ': 'Engine',
+  'engine': 'Engine',
+  'hộp số': 'Transmission',
+  'transmission': 'Transmission',
+  'nhiên liệu': 'FuelType',
+  'fueltype': 'FuelType',
+  'nhiên liệu xe': 'FuelType',
+  'mã lực': 'Horsepower',
+  'horsepower': 'Horsepower',
+  'màu sắc': 'Color',
+  'màu': 'Color',
+  'color': 'Color',
+  'mô-men xoắn': 'Torque',
+  'mô men xoắn': 'Torque',
+  'torque': 'Torque',
+  'số chỗ': 'Seat',
+  'số ghế': 'Seat',
+  'seat': 'Seat',
+  'mâm xe': 'WheelSize',
+  'kích thước mâm': 'WheelSize',
+  'wheelsize': 'WheelSize',
+  'dẫn động': 'DriveType',
+  'hệ dẫn động': 'DriveType',
+  'drivetype': 'DriveType',
+  'giải trí': 'Entertainment',
+  'hệ thống giải trí': 'Entertainment',
+  'entertainment': 'Entertainment'
+};
+
+const prepareSpecPayload = (specsArray) => {
+  const engine = specsArray.find(s => s.key === 'Engine')?.value || 'N/A';
+  const horsepower = specsArray.find(s => s.key === 'Horsepower')?.value || 'N/A';
+  const fuelType = specsArray.find(s => s.key === 'FuelType')?.value || 'N/A';
+
+  const specs = [...specsArray];
+  if (!specs.some(s => s.key === 'Engine')) specs.push({ key: 'Engine', value: engine });
+  if (!specs.some(s => s.key === 'Horsepower')) specs.push({ key: 'Horsepower', value: horsepower });
+  if (!specs.some(s => s.key === 'FuelType')) specs.push({ key: 'FuelType', value: fuelType });
+
+  return { engine, horsepower, fuelType, specs };
+};
 
 const CarList = () => {
   const { addToast } = useToast();
@@ -73,11 +119,12 @@ const CarList = () => {
 
   const handleSpecSubmit = async (specs) => {
     try {
+      const payload = prepareSpecPayload(specs);
       if (activeCar.specId) {
         const specId = typeof activeCar.specId === 'object' ? activeCar.specId._id : activeCar.specId;
-        await apiCarSpecs.update(specId, { specs });
+        await apiCarSpecs.update(specId, payload);
       } else {
-        const newSpec = await apiCarSpecs.create({ specs });
+        const newSpec = await apiCarSpecs.create(payload);
         await apiCars.update(activeCar._id, { specId: newSpec._id });
       }
       
@@ -122,6 +169,153 @@ const CarList = () => {
     }
   };
 
+  const handleImportClick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx, .xls, .csv';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      try {
+        addToast('Đang phân tích file...', 'info');
+        const rows = await readExcelOrCsv(file);
+        if (rows.length === 0) {
+          return addToast('File không có dữ liệu!', 'warning');
+        }
+
+        addToast(`Bắt đầu nhập ${rows.length} xe... (Keys: ${Object.keys(rows[0] || {}).join(', ')})`, 'info');
+        
+        // Cache types and models to minimize DB lookups
+        const types = await apiCarTypes.getAll();
+        const models = await apiCarModels.getAll();
+        
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const row of rows) {
+          try {
+            // Read fields and support both English and Vietnamese headers
+            const rawBrand = row['Hãng xe'] || row['Hãng'] || row['Brand'] || '';
+            const rawModel = row['Dòng xe'] || row['Tên dòng xe'] || row['Model'] || '';
+            const rawType = row['Phân loại'] || row['Loại xe'] || row['Type'] || '';
+            const rawPrice = row['Giá niêm yết ($)'] || row['Giá niêm yết'] || row['Giá'] || row['Price'] || 0;
+            const rawStatus = row['Trạng thái'] || row['Status'] || 'available';
+
+            if (!rawBrand || !rawModel || !rawType || !rawPrice) {
+              addToast(`Bỏ qua dòng thiếu dữ liệu. Brand="${rawBrand}" Model="${rawModel}" Type="${rawType}" Price="${rawPrice}"`, 'warning');
+              errorCount++;
+              continue;
+            }
+
+            // 1. Get or Create Car Type
+            let carType = types.find(t => t.name.toLowerCase() === String(rawType).trim().toLowerCase());
+            if (!carType) {
+              carType = await apiCarTypes.create({ name: String(rawType).trim() });
+              types.push(carType);
+            }
+
+            // 2. Get or Create Car Model
+            let carModel = models.find(m => 
+              m.name.toLowerCase() === String(rawModel).trim().toLowerCase() && 
+              m.brand.toLowerCase() === String(rawBrand).trim().toLowerCase()
+            );
+            if (!carModel) {
+              carModel = await apiCarModels.create({
+                name: String(rawModel).trim(),
+                brand: String(rawBrand).trim(),
+                carTypeId: carType._id
+              });
+              models.push(carModel);
+            }
+
+            // 3. Collect specs (everything else)
+            const knownKeys = ['Hãng xe', 'Hãng', 'Brand', 'Dòng xe', 'Tên dòng xe', 'Model', 'Phân loại', 'Loại xe', 'Type', 'Giá niêm yết ($)', 'Giá niêm yết', 'Giá', 'Price', 'Trạng thái', 'Status'];
+            const specs = [];
+            Object.keys(row).forEach(key => {
+              if (!knownKeys.includes(key) && row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== '') {
+                const cleanedKey = key.trim().toLowerCase();
+                const englishKey = KEY_TRANSLATIONS[cleanedKey];
+                if (englishKey) {
+                  specs.push({ key: englishKey, value: String(row[key]).trim() });
+                }
+              }
+            });
+
+            // 4. Create Spec
+            const payload = prepareSpecPayload(specs);
+            const specDoc = await apiCarSpecs.create(payload);
+
+            // 5. Map status
+            let finalStatus = 'available';
+            const cleanStatus = String(rawStatus).trim().toLowerCase();
+            if (cleanStatus === 'đã bán' || cleanStatus === 'sold') finalStatus = 'sold';
+            else if (cleanStatus === 'đã đặt cọc' || cleanStatus === 'reserved' || cleanStatus === 'pending') finalStatus = 'reserved';
+
+            // 6. Create Car
+            await apiCars.create({
+              modelId: carModel._id,
+              specId: specDoc._id,
+              price: Number(rawPrice),
+              status: finalStatus
+            });
+
+            successCount++;
+          } catch (err) {
+            const errMsg = err?.response?.data?.message || err?.message || 'Unknown error';
+            console.error('Error importing row:', JSON.stringify(row), 'Error:', errMsg, err);
+            addToast(`Lỗi dòng ${errorCount + successCount + 1}: ${errMsg}`, 'error');
+            errorCount++;
+          }
+        }
+
+        loadCars();
+        if (errorCount > 0) {
+          addToast(`Đã nhập thành công ${successCount} xe. Thất bại ${errorCount} xe.`, 'warning');
+        } else {
+          addToast(`Nhập thành công tất cả ${successCount} xe từ file!`, 'success');
+        }
+      } catch (err) {
+        addToast(err.message || 'Lỗi khi nhập file', 'error');
+      }
+    };
+    input.click();
+  };
+
+  const handleExportClick = () => {
+    if (cars.length === 0) {
+      return addToast('Không có dữ liệu để xuất!', 'warning');
+    }
+
+    try {
+      addToast('Đang chuẩn bị file...', 'info');
+      
+      const exportData = cars.map(car => {
+        const row = {
+          'Hãng xe': car.modelId?.brand || '',
+          'Dòng xe': car.modelId?.name || '',
+          'Phân loại': car.modelId?.carTypeId?.name || '',
+          'Giá niêm yết ($)': car.price || 0,
+          'Trạng thái': car.status === 'available' ? 'Sẵn sàng' : car.status === 'reserved' ? 'Đã đặt cọc' : 'Đã bán',
+        };
+        
+        // Add specs
+        if (car.specId?.specs) {
+          car.specId.specs.forEach(spec => {
+            row[spec.key] = spec.value;
+          });
+        }
+        
+        return row;
+      });
+
+      exportToExcel(exportData, 'Danh_sach_xe.xlsx', 'Kho xe');
+      addToast('Xuất file Excel thành công!', 'success');
+    } catch (err) {
+      addToast('Lỗi khi xuất file Excel', 'error');
+    }
+  };
+
   const handleOpenAdd = () => {
     setActiveCar(null);
     setIsCarModalOpen(true);
@@ -156,15 +350,35 @@ const CarList = () => {
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Quản lý Kho xe</h2>
           <p className="text-slate-500 text-sm font-medium">Hệ thống quản lý xe chuyên nghiệp</p>
         </div>
-        <Button 
-          variant="primary" 
-          size="lg" 
-          icon={Plus}
-          onClick={handleOpenAdd}
-          className="shadow-xl shadow-slate-900/20"
-        >
-          Thêm xe mới
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button 
+            variant="ghost" 
+            size="md" 
+            icon={Upload}
+            onClick={handleImportClick}
+            className="hover:bg-slate-100 border border-slate-200"
+          >
+            Nhập từ file
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="md" 
+            icon={Download}
+            onClick={handleExportClick}
+            className="hover:bg-slate-100 border border-slate-200"
+          >
+            Xuất Excel
+          </Button>
+          <Button 
+            variant="primary" 
+            size="lg" 
+            icon={Plus}
+            onClick={handleOpenAdd}
+            className="shadow-xl shadow-slate-900/20"
+          >
+            Thêm xe mới
+          </Button>
+        </div>
       </div>
 
       {/* Filters Bar */}
