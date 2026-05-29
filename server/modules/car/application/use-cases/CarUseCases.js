@@ -13,9 +13,16 @@ class CarUseCases {
   }
 
   async createCar(data) {
-    if (!data.modelId || !data.specId || !data.price) {
-      throw new AppError('ModelId, specId, and price are required', 400);
+    if (!data.modelId || !data.price) {
+      throw new AppError('ModelId and price are required', 400);
     }
+
+    if (!data.specId) {
+      const CarSpec = require('../../../car_spec/infrastructure/models/CarSpec');
+      const specDoc = await CarSpec.create({ specs: [] });
+      data.specId = specDoc._id;
+    }
+
     return await carRepo.create(data);
   }
 
