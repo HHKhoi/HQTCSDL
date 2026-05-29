@@ -2,11 +2,21 @@ const Order = require('../models/Order');
 
 class OrderRepository {
   async findAll() {
-    return await Order.find().populate('carId');
+    return await Order.find().populate({
+      path: 'carId',
+      populate: {
+        path: 'modelId'
+      }
+    });
   }
 
   async findById(id) {
-    return await Order.findById(id).populate('carId');
+    return await Order.findById(id).populate({
+      path: 'carId',
+      populate: {
+        path: 'modelId'
+      }
+    });
   }
 
   async create(data) {

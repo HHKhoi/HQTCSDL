@@ -2,7 +2,7 @@ const { Queue } = require('bullmq');
 const { connection } = require('../shared/config/redis');
 
 // Centralised cron pattern so it can be changed in one place
-const ETL_CRON_PATTERN = '*/5 * * * *'; // every 5 minutes
+const ETL_CRON_PATTERN = '*/1 * * * *'; // every 1 minute
 
 const etlQueue = new Queue('etl-tasks', {
   connection,

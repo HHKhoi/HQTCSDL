@@ -130,7 +130,7 @@ const CarList = () => {
       
       setIsSpecModalOpen(false);
       loadCars();
-      addToast('Cập nhật thông số kỹ thuật thành công!');
+      addToast('Cập nhật thông số kỹ thuật thành công!'); 
     } catch {
       addToast('Lỗi khi lưu thông số kỹ thuật', 'error');
     }

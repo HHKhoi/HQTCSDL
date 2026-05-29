@@ -13,6 +13,14 @@ const CarModel = require("../modules/car_model/infrastructure/models/CarModel");
 const CarSpec = require("../modules/car_spec/infrastructure/models/CarSpec");
 const Car = require("../modules/car/infrastructure/models/Car");
 const Order = require("../modules/order/infrastructure/models/Order");
+const DailySalesSummary = require("../modules/analytics/infrastructure/models/DailySalesSummary");
+const CarModelStats = require("../modules/analytics/infrastructure/models/CarModelStats");
+const InventoryStats = require("../modules/analytics/infrastructure/models/InventoryStats");
+const OrderStats = require("../modules/analytics/infrastructure/models/OrderStats");
+const SyncState = require("../modules/analytics/infrastructure/models/SyncState");
+const DailyAnalytics = require("../modules/analytics/infrastructure/models/DailyAnalytics");
+const InventoryAnalytics = require("../modules/analytics/infrastructure/models/InventoryAnalytics");
+const TopModelsAnalytics = require("../modules/analytics/infrastructure/models/TopModelsAnalytics");
 
 const BRANDS = [
   {
@@ -54,6 +62,14 @@ const seed = async () => {
       CarSpec.deleteMany(),
       Car.deleteMany(),
       Order.deleteMany(),
+      DailySalesSummary.deleteMany(),
+      CarModelStats.deleteMany(),
+      InventoryStats.deleteMany(),
+      OrderStats.deleteMany(),
+      SyncState.deleteMany(),
+      DailyAnalytics.deleteMany(),
+      InventoryAnalytics.deleteMany(),
+      TopModelsAnalytics.deleteMany(),
     ]);
 
     // 1. Create Admin
@@ -122,7 +138,7 @@ const seed = async () => {
       const specDoc = await CarSpec.create({ specs });
 
       // Create Car
-      const status = i < 50 ? "sold" : i < 70 ? "reserved" : "available";
+      const status = "available";
       const price =
         model.brand === "Porsche"
           ? getRandomInt(100, 300) * 1000
@@ -139,12 +155,16 @@ const seed = async () => {
       if (status === "sold") {
         const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
         const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+        const customerNames = ["Nguyễn Văn A", "Trần Thị B", "Lê Hoàng C", "Phạm Minh D", "Vũ Tuyết E", "Hoàng Văn F"];
+        const phoneNumbers = ["0912345678", "0987654321", "0901234567", "0934567890", "0976543210"];
 
         await Order.create({
           carId: carDoc._id,
           price: carDoc.price,
           orderCode: `ORD-${date}-${random}`,
           status: 'completed',
+          customerName: getRandomArrayItem(customerNames),
+          phoneNumber: getRandomArrayItem(phoneNumbers),
           createdAt: new Date(
             Date.now() - getRandomInt(0, 30) * 24 * 60 * 60 * 1000,
           ), // Random date in last 30 days
